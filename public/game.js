@@ -4,13 +4,19 @@ var socket;
 var GAMEMODE;
 var fontMarker;
 let latency, timeInfo;
+let latestKilled = {name:"none", timer:0}
+let isChat;
 
 const FRAME_DELAY = 2;
+const MAP_RADIUS = 500;
 
 const gunInfo = [
-    {name:'shotgun', shootReload:3},
-    {name:'standard', shootReload:5}
+    { name:'shotgun', shootReload:3, reloadMax:2 },
+    { name:'standard', shootReload:5, reloadMax:12 },
+    { name:'sniper', shootReload:20, reloadMax:2 }
 ];
+let nameInput, username = 'unnamed player', chatInput;
+
 function setup() {
     createCanvas(1000,700);
     background(colors[0]);
@@ -19,19 +25,33 @@ function setup() {
     //socket = io.connect('http://localhost:3000');
     frameRate(30);
     ping = 0;
+    isChat = false;
+    chatInput = createInput('');
+    chatInput.hide();
+    chatInput.position(width/2-150, height*1/2+100);
+    chatInput.size(300);
+    chatInput.id("chatInput")
+    chatInput.input(function() {
+        if(this.value().length > 24) {
+            this.value(this.value().substring(0, 24));
+        }
+    });
 }
-let nameInput, username;
 function loadHome() {
     GAMEMODE = 'HOME';
-    nameInput = createInput('unnamed player');
+    nameInput = createInput(username);
+    console.log(username);
+    nameInput.value(username);
     nameInput.position(width/2-50, height*1/2+20);
     nameInput.size(100);
-    nameInput.show();
     nameInput.input(function() {
         if(this.value().length > 14) {
             this.value(this.value().substring(0, 14));
         }
     });
+    nameInput.show();
+    
+    isChat = false;
 }
 let gameStates = [];
 
@@ -39,19 +59,23 @@ let player;
 let players = {};
 let bullets = [];
 let leaderboard = [];
+let walls = [];
+let chats = [];
 let scroll = {x: 0, y:0};
 let killedBy;
 let gunEquipHome;
 let weaponSelected = 0;
+let highestStreak = 0;
 function loadServer() {
     GAMEMODE='LOAD';
+    username = nameInput.value();
     nameInput.hide();
     socket = io.connect("http://localhost:3000");
     socket.on('newConnected', function(data){
         if(data.id == socket.id) {
             console.log('connected, now creating player');
             console.log(socket.id);
-            socket.emit('createPlayer', { player:new Player(nameInput.value(), socket.id, 0, 0, 0, weaponSelected)});    
+            socket.emit('createPlayer', { player:new Player(nameInput.value(), socket.id, random(-MAP_RADIUS, MAP_RADIUS), random(-MAP_RADIUS, MAP_RADIUS), 0, weaponSelected)});    
         }
     });
     
@@ -61,7 +85,7 @@ function loadServer() {
             players[player.id] = player;
             gameStates = [];
             for(let i = 0; i < FRAME_DELAY; i++) {
-                gameStates.push({players, bullets, leaderboard});
+                gameStates.push({players, bullets, leaderboard, walls, chats});
             }
             socket.on('heartbeat', tick);
             loadGame();
@@ -76,8 +100,12 @@ function loadServer() {
     socket.on('playerDied', function(data) {
         if(data.player.id == socket.id) {
             player = data.player;
-            killedBy = data.killedBy;
+            killedBy = data.killedBy.username;
             loadDead();
+        }
+        if(data.killedBy.id == socket.id) {
+            latestKilled.name = data.player.username;
+            latestKilled.timer = 90;
         }
     });
 }
@@ -91,7 +119,11 @@ function loadGame() {
 }
 function loadDead() {
     GAMEMODE='DEAD';
+    if(player.kills > highestStreak) {
+        highestStreak = player.kills;
+    }
     console.log('oops! you died!');
+    isChat = false;
 }
 function loadRestart() {
     GAMEMODE="LOAD";
@@ -107,11 +139,12 @@ function loadRestart() {
 }
 function tick(data) {
     addGameState(data);
-    console.log(gameStates.length);
     let current = getGameState();
     players = current.players;
     bullets = current.bullets;
+    walls = current.walls;
     leaderboard = current.leaderboard;
+    chats = current.chats;
     player.health = players[player.id].health;
     player.ammo = players[player.id].ammo;
     player.reloadCounter = players[player.id].reloadCounter;
@@ -169,7 +202,7 @@ function draw() {
         // instructions
         fill(colors[2]);
         textSize(20); noStroke();
-        text("INSTRUCTIONS\nWASD - move\nclick - shoot\n", width/2, height/2+250);
+        text("INSTRUCTIONS\nWASD - move\nclick - shoot\nR - reload", width/2, height/2+240);
 
         // play btn
         if(    mouseX > width/2-60     && mouseX < width/2+60
@@ -201,7 +234,9 @@ function draw() {
         updatePlayer(player);
         drawPlayer(player);
         drawPlayers();
-
+        drawMap();
+        drawChats();
+        drawLatestKill()
         if(player.redTime > 0){
             noFill();
             stroke(255,0,0, player.redTime/20*255/2);
@@ -231,9 +266,10 @@ function draw() {
         drawAmmo();
         // bottom left text
         fill(255); noStroke(); textSize(30);
-        text('ammo:'+player.ammo, 80, height-50);
-        text('reload:'+player.reloadCounter, 80, height-30);
+        //text('ammo:'+player.ammo, 80, height-50);
+        //text('reload:'+player.reloadCounter, 80, height-30);
         text('ping: ' + ping + 'ms', 80, height-70);
+        text(round(getFrameRate()) + ' FPS', 80, height-110);
 
         drawLeaderboard()
     }
@@ -242,6 +278,10 @@ function draw() {
         background(colors[4]);
         drawBullets();
         drawPlayers();
+        drawMap();
+        drawChats();
+        drawLatestKill()
+
         fill(255); noStroke();
         textSize(50);
         text(player.username, width/2, height-90);
@@ -272,10 +312,10 @@ function draw() {
         rect(width/2, height/2-30, 500, 200);
         noStroke();
         fill(255);
-        textSize(50);
-        text("Killed By: " + killedBy, width/2, height*1/2-80);
         textSize(40);
-        text("kill streak: " + player.kills, width/2, height*1/2-30);
+        text("Killed By: " + killedBy, width/2, height*1/2-80);
+        textSize(30);
+        text("kill streak: " + player.kills + "     highest: " + highestStreak, width/2, height*1/2-30);
         // playBtn
         if(    mouseX > width/2-60     && mouseX < width/2+60
             && mouseY < height/2+30+20 && mouseY > height/2+30-20) {
@@ -286,6 +326,17 @@ function draw() {
         textSize(30);
         fill(colors[4]); noStroke();
         text("Play", width/2, height/2+30);
+        //homeBtn
+        if(    mouseX > width/2-150-60     && mouseX < width/2-150+60
+            && mouseY < height/2+30+20 && mouseY > height/2+30-20) {
+            fill(colors[2]);
+        } else { fill(colors[3]) };
+        noStroke();
+        rect(width/2-150, height/2+30, 120, 40);
+        textSize(30);
+        fill(colors[4]); noStroke();
+        text("Home", width/2-150, height/2+30);
+
 
         drawLeaderboard()
         drawWeaponSelection();
@@ -303,6 +354,7 @@ function drawPlayers() {
             line(cntr.x+30, cntr.y-30, cntr.x-30, cntr.y+30);
             continue;
         }
+
         if(p.id == socket.id) continue;
         drawPlayer(p);
         
@@ -317,6 +369,23 @@ function drawPlayers() {
         fill(255); noStroke();
         textSize(20);
         text(p.username, p.x-scroll.x, p.y-scroll.y-35);
+    }
+}
+function drawChats() {
+    let count = {};
+    for(let i = chats.length - 1; i >= 0; i--) {
+        let chat = chats[i];
+        let p = players[chat.id];
+        if(chat.id == socket.id) p = player;
+        if(chat.id in count) {
+            count[chat.id]++;
+        } else {
+            count[chat.id] = 0;
+        }
+        fill(255);
+        noStroke();
+        textSize(20);
+        text(chat.text, p.x - scroll.x, p.y - scroll.y - 60 - 20*count[chat.id]);
     }
 }
 function drawBullets() {
@@ -389,10 +458,7 @@ function Player(username, id, x, y, dir, weapon) {
     this.dir = dir;
     this.weapon = weapon;
     this.health = 100;
-    if(weapon == 0) 
-        this.ammo = 2;
-    if(weapon == 1) 
-        this.ammo = 12;
+    this.ammo = gunInfo[weapon].reloadMax;
     this.reloadCounter = -1;
     this.redTime = 0;
     this.kills = 0;
@@ -417,6 +483,7 @@ function updatePlayer(user) {
     if(keyright) {
         user.x += speed;
     }
+    boundPlayer(user);
     if(mouseX-(user.x-scroll.x) >= 0) {
         user.dir = atan((mouseY-(user.y-scroll.y))/(mouseX-(user.x-scroll.x)));
     } else {
@@ -430,6 +497,40 @@ function updatePlayer(user) {
         
     }
 }
+
+function boundPlayer(user) {
+    if(player.x + 15 > MAP_RADIUS) {
+        player.x = MAP_RADIUS - 15;
+    }
+    if(player.x - 15 < -MAP_RADIUS) {
+        player.x = -MAP_RADIUS + 15;
+    }
+    if(player.y + 15 > MAP_RADIUS) {
+        player.y = MAP_RADIUS - 15;
+    }
+    if(player.y - 15 < -MAP_RADIUS) {
+        player.y = -MAP_RADIUS + 15;
+    }
+    for(let i = 0; i < walls.length; i++) {
+        if(dist(player.x, player.y, walls[i].x, walls[i].y) < walls[i].d/2 + 15) {
+            let k = atan2(player.y-walls[i].y, player.x-walls[i].x); // direction from wall to player;
+            let m = 15 + walls[i].d/2; // distance
+            player.x = walls[i].x + cos(k)*m;
+            player.y = walls[i].y + sin(k)*m;
+        }
+    }
+}
+function drawMap() {
+    rectMode(CENTER);
+    noFill();
+    stroke(colors[1]);
+    strokeWeight(5);
+    rect(0-scroll.x,0-scroll.y,MAP_RADIUS*2, MAP_RADIUS*2);
+    for(let i = 0; i < walls.length; i++) {
+        ellipse(walls[i].x-scroll.x, walls[i].y-scroll.y, walls[i].d, walls[i].d);
+    }
+}
+
 function drawPlayer(user) {
     fill(colors[1]);
     noStroke();
@@ -446,6 +547,18 @@ function drawBullet(bullet) {
     fill(colors[3]);
     noStroke();
     ellipse(bullet.x-scroll.x, bullet.y-scroll.y, 5,5);
+    ellipse(bullet.x-scroll.x -bullet.vx*0.5, bullet.y-scroll.y -bullet.vy*0.5, 4,4);
+    ellipse(bullet.x-scroll.x -bullet.vx*1, bullet.y-scroll.y -bullet.vy*1, 3,3);
+    ellipse(bullet.x-scroll.x -bullet.vx*1.5, bullet.y-scroll.y -bullet.vy*1.5, 2,2);
+}
+function drawLatestKill() {
+    if(latestKilled.timer > 0) {
+        noStroke();
+        fill(255);
+        textSize(30);
+        text('You killed ' + latestKilled.name + "!", width/2, 150);
+        latestKilled.timer--;
+    } 
 }
 function drawAmmo() {
     if(player.weapon == 0) {
@@ -483,7 +596,66 @@ function drawAmmo() {
         textSize(30);
         text('Standard', width-20, height-40);
         textAlign(CENTER,CENTER);
+        
+        for(let i = 0; i < player.ammo; i++) {
+            let p = getAmmoPos(i);
+            let x = width-40-p.x*15;
+            let y = height-80-p.y*20;
+            noStroke(); fill(colors[3]);
+            ellipse(x, y, 10, 10);
+        }
+        if(player.reloadCounter > 0) {
+            let h = 12-floor(player.reloadCounter/60 * 12);
+            for(let i = 0; i < h; i++) {
+                let p = getAmmoPos(i);
+                let x = width-40-p.x*15;
+                let y = height-80-p.y*20;
+                noStroke(); fill(colors[3]);
+                ellipse(x, y, 10, 10);
+            }
+        } else {
+            for(let i = 0; i < player.ammo; i++) {
+                let p = getAmmoPos(i);
+                let x = width-40-p.x*15;
+                let y = height-80-p.y*20;
+                noStroke(); fill(colors[3]);
+                ellipse(x, y, 10, 10);
+            }
+        }
     }
+    if(player.weapon == 2) {
+        fill(255);
+        noStroke();
+        textAlign(RIGHT,CENTER);
+        textSize(30);
+        text('Sniper', width-20, height-40);
+        textAlign(CENTER,CENTER);
+        fill(0);
+        stroke(colors[3]); strokeWeight(4);
+        rect(width-40, height-100, 20, 60);
+        rect(width-80, height-100, 20, 60);
+        if(player.ammo > 0) {
+            noStroke();
+            fill(colors[6]);
+            rect(width-40, height-100, 16, 60);
+            if(player.ammo > 1) {
+                rect(width-80, height-100, 16, 60);
+            }
+        } else {
+            if(player.reloadCounter > 0) {
+                let h = 60 - player.reloadCounter / 60 * 60;
+                noStroke();
+                fill(colors[5]);
+                rect(width-40, height-100, 16, h);
+                rect(width-80, height-100, 16, h);
+            }
+        }
+    }
+}
+function getAmmoPos(ID) {
+    x = floor(ID/4);
+    y = ID%4;
+    return {x,y};
 }
 let keyup, keydown, keyleft, keyright;
 
@@ -493,7 +665,24 @@ function keyPressed() {
         if(key=='s') keydown = true;
         if(key=='a') keyleft = true;
         if(key=='d') keyright = true;
-        if(key=='r' && player.reloadCounter==-1 && player.ammo < 2) socket.emit('playerReload', {id:player.id});
+        if(key=='r' && player.reloadCounter==-1 && player.ammo < gunInfo[player.weapon].reloadMax) socket.emit('playerReload', {id:player.id});
+        if(keyCode==ENTER) {
+            if(!isChat) {
+                isChat = true;
+                chatInput.value('');
+                
+                chatInput.show();
+                document.getElementById("chatInput").focus();
+            } else {
+                isChat = false;
+                chatInput.hide();
+                document.getElementById("chatInput").blur();
+                if(chatInput.value().length > 0) {
+                    console.log(chatInput.value());
+                    socket.emit('playerChat', {player, text:chatInput.value()})
+                }
+            }
+        }
     }
 }
 function keyReleased() {
@@ -539,6 +728,7 @@ function mouseClicked() {
     // home play btn
     if(    mouseX > width/2-60     && mouseX < width/2+60
         && mouseY < height/2+150+20 && mouseY > height/2+150-20 && GAMEMODE=='HOME') {
+        
         loadServer();
     }
    // dead play btn
@@ -546,5 +736,10 @@ function mouseClicked() {
         && mouseY < height/2+30+20 && mouseY > height/2+30-20 && GAMEMODE=='DEAD') {
         loadRestart();
     }
-    
+    // dead home btn
+    if(    mouseX > width/2-150-60     && mouseX < width/2-150+60
+        && mouseY < height/2+30+20 && mouseY > height/2+30-20 && GAMEMODE == 'DEAD') {
+        loadHome();
+        socket.disconnect();
+    }
 }
