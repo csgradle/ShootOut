@@ -70,7 +70,7 @@ function loadServer() {
     GAMEMODE='LOAD';
     username = nameInput.value();
     nameInput.hide();
-    socket = io.connect("http://localhost:3000");
+    socket = io.connect("wss://45.79.66.150.nip.io/ws");
     socket.on('newConnected', function(data){
         if(data.id == socket.id) {
             console.log('connected, now creating player');
