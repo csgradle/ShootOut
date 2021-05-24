@@ -12,9 +12,15 @@ const MAP_RADIUS = 500;
 
 const gunInfo = [
     { name:'shotgun', shootReload:3, reloadMax:2 },
-    { name:'standard', shootReload:5, reloadMax:12 },
+    { name:'standard', shootReload:5, reloadMax:20 },
     { name:'sniper', shootReload:20, reloadMax:2 }
 ];
+const keyCodes = {
+    a:65,
+    d:68,
+    w:87,
+    s:83
+}
 let nameInput, username = 'unnamed player', chatInput;
 
 function setup() {
@@ -126,6 +132,10 @@ function loadDead() {
     }
     console.log('oops! you died!');
     isChat = false;
+    keyup = false;
+    keydown = false;
+    keyleft = false;
+    keyright = false;
 }
 function loadRestart() {
     GAMEMODE="LOAD";
@@ -498,6 +508,10 @@ function updatePlayer(user) {
         shootReload=gunInfo[user.weapon].shootReload;
         
     }
+    if(!keyIsDown(keyCodes.a)) keyleft = false;
+    if(!keyIsDown(keyCodes.d)) keyright = false;
+    if(!keyIsDown(keyCodes.w)) keyup = false;
+    if(!keyIsDown(keyCodes.s)) keydown = false;
 }
 
 function boundPlayer(user) {
@@ -607,7 +621,7 @@ function drawAmmo() {
             ellipse(x, y, 10, 10);
         }
         if(player.reloadCounter > 0) {
-            let h = 12-floor(player.reloadCounter/60 * 12);
+            let h = 20-floor(player.reloadCounter/60 * 20);
             for(let i = 0; i < h; i++) {
                 let p = getAmmoPos(i);
                 let x = width-40-p.x*15;
@@ -681,7 +695,7 @@ function keyPressed() {
                 document.getElementById("chatInput").blur();
                 if(chatInput.value().length > 0) {
                     console.log(chatInput.value());
-                    socket.emit('playerChat', {player, text:chatInput.value()})
+                    socket.emit('playerChat', {player, text:chatInput.value()});
                 }
             }
         }

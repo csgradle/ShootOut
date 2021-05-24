@@ -23,6 +23,7 @@ let walls = [
 ];
 let chats = [];
 let playerCount;
+let frameCount = 0;
 
 setInterval(emitHeartbeat, 33); // 30FPS would be 33
 setInterval(updateGame, 33/2);
@@ -40,6 +41,7 @@ function emitHeartbeat() {
     }
 }
 function updateGame(){
+    frameCount++;
     playerCount = Object.keys(players).length;
     if(playerCount > 0) { 
         
@@ -53,7 +55,7 @@ function updateGame(){
                         player.ammo = 2;
                     }
                     if(player.weapon == 1) {
-                        player.ammo = 12;
+                        player.ammo = 20;
                     }
                     if(player.weapon == 2) {
                         player.ammo = 2;
@@ -76,7 +78,7 @@ function updateGame(){
                             if(players[bullets[i].id].weapon == 1) 
                                 player.health -= 20;
                             if(players[bullets[i].id].weapon == 2) 
-                                player.health -= 80;
+                                player.health -= 100;
                             player.redTime = 20;
                             if(player.health <= 0) { // player killed by bullet
                                 if(player.health != -100) {
@@ -134,6 +136,16 @@ function updateGame(){
                 i--;
             }
         }
+    } else {
+        leaderboard = [];
+    }
+    if(frameCount%3600 == 0 && leaderboard.length > 0) {
+        for(let i = 0; i < leaderboard.length; i++) {
+            if(!leaderboard[i].id in players) {
+                leaderboard.splice(i, 1);
+                i--;
+            }
+        }
     }
 }
 
@@ -144,7 +156,8 @@ io.sockets.on('connection',
 
         socket.on('createPlayer', function(data) {
             players[data.player.id]=data.player;
-            
+            players[data.player.id].weapon = data.player.weapon % 3;
+            if(data.player.username.length > 14) players[data.player.id].username = "a programmer";
             io.sockets.emit('startClient', { id: socket.id, user: data.player });
             leaderboard.push(new LbItem(data.player.id, data.player.username, 0));
         });
@@ -200,11 +213,11 @@ io.sockets.on('connection',
                 players[data.player.id].y = randomPos();
                 players[data.player.id].dir = 0;
                 players[data.player.id].health = 100;
-                players[data.player.id].weapon = data.player.weapon;
+                players[data.player.id].weapon = data.player.weapon % 3;
                 if(players[data.player.id].weapon == 0) 
                     players[data.player.id].ammo = 2;
                 if(players[data.player.id].weapon == 1) 
-                    players[data.player.id].ammo = 12;
+                    players[data.player.id].ammo = 20;
                     if(players[data.player.id].weapon == 2) 
                     players[data.player.id].ammo = 2;
                 players[data.player.id].reloadCounter = -1;
@@ -214,6 +227,7 @@ io.sockets.on('connection',
             }
         });
         socket.on('playerChat', function(data) {
+            if(data.text.length > 24) return;
             chats.push({id:data.player.id, text:data.text, life:60*3});
         });
         socket.on('ping', function(data) {
