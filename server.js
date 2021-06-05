@@ -11,7 +11,7 @@ var socket = require('socket.io');
 
 var io = socket(server);
 
-const MAP_RADIUS = 500;
+let MAP_RADIUS = 500;
 let players = {};
 let bullets = [];
 let leaderboard = [];
@@ -34,7 +34,8 @@ function emitHeartbeat() {
             bullets,
             leaderboard, 
             walls,
-            chats
+            chats,
+            MAP_RADIUS
         };
         io.sockets.emit('heartbeat', data);
         
@@ -43,6 +44,7 @@ function emitHeartbeat() {
 function updateGame(){
     frameCount++;
     playerCount = Object.keys(players).length;
+    
     if(playerCount > 0) { 
         
         for(let id in players) {
@@ -76,7 +78,7 @@ function updateGame(){
                             if(players[bullets[i].id].weapon == 0) 
                                 player.health -= 10;
                             if(players[bullets[i].id].weapon == 1) 
-                                player.health -= 20;
+                                player.health -= 15;
                             if(players[bullets[i].id].weapon == 2) 
                                 player.health -= 100;
                             player.redTime = 20;
@@ -148,6 +150,25 @@ function updateGame(){
         }
     }
 }
+function updateMap() {
+    if(playerCount > 6) {
+        MAP_RADIUS = 800;
+        walls = [
+            { name:'TL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/5 },
+            { name:'TR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/5 },
+            { name:'BL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/5 },
+            { name:'BR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/5 }
+        ];
+    }  else {
+        MAP_RADIUS = 500;
+        walls = [
+            { name:'TL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/4 },
+            { name:'TR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/4 },
+            { name:'BL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/4 },
+            { name:'BR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/4 }
+        ];
+    }
+}
 
 io.sockets.on('connection', 
     function(socket) {
@@ -155,25 +176,32 @@ io.sockets.on('connection',
         io.sockets.emit('newConnected', {id: socket.id});
 
         socket.on('createPlayer', function(data) {
+            if(!data.player.id in players) return;
             players[data.player.id]=data.player;
             players[data.player.id].weapon = data.player.weapon % 3;
-            if(data.player.username.length > 14) players[data.player.id].username = "a programmer";
+            if(data.player.username.length > 14) players[data.player.id].username = "A_PROGRAMMER";
             io.sockets.emit('startClient', { id: socket.id, user: data.player });
+            for(let p in leaderboard) {
+                if(p.id == data.player.id) return;
+            }
             leaderboard.push(new LbItem(data.player.id, data.player.username, 0));
+            playerCount = Object.keys(players).length;
+            updateMap();
         });
         socket.on('updatePlayer', function(data) {
-            
+            if(!data.player.id in players) return;
             let u = data.player;
-            if(u.health == -100) return;
+            if(players[u.id].health == -100 || u.health == -100) return;
             u.ammo = players[u.id].ammo;
             u.health = players[u.id].health;
             u.reloadCounter = players[u.id].reloadCounter;
-            u.redTime = players[u.id].redTime;
+            u.redTime = players[u.id].redTime; 
             u.kills = players[u.id].kills;
             players[u.id] = data.player;
                 
         });
         socket.on('playerShoot', function(data) {
+            if(!data.id in players) return;
             if(players[data.id].health == -100) return;
             if(players[data.id].ammo > 0){
                 if(players[data.id].weapon == 0) {
@@ -184,8 +212,10 @@ io.sockets.on('connection',
                     }
                 } 
                 if(players[data.id].weapon == 1) {
+                    let spread = 0.5;
+                    let dir = players[data.id].dir + Math.random()*spread-spread/2;
                     let origin = {x:players[data.id].x+20*Math.cos(players[data.id].dir), y:players[data.id].y+20*Math.sin(players[data.id].dir)};
-                    bullets.push(new Bullet(origin.x, origin.y, players[data.id].dir, 25, data.id));
+                    bullets.push(new Bullet(origin.x, origin.y, dir, 25, data.id));
                 }
                 if(players[data.id].weapon == 2) {
                     let origin = {x:players[data.id].x+20*Math.cos(players[data.id].dir), y:players[data.id].y+20*Math.sin(players[data.id].dir)};
@@ -196,6 +226,7 @@ io.sockets.on('connection',
             }
         });
         socket.on('playerReload', function(data) {
+            if(!data.id in players) return;
             if(players[data.id].health == -100) return;
             if(players[data.id].reloadCounter = -1) {
                 if(players[data.id].weapon == 0) 
@@ -208,6 +239,7 @@ io.sockets.on('connection',
             }
         });
         socket.on('restartPlayer', function(data){
+            if(!data.player.id in players) return;
             if(players[data.player.id].health == -100) {
                 players[data.player.id].x = randomPos();
                 players[data.player.id].y = randomPos();
@@ -227,10 +259,12 @@ io.sockets.on('connection',
             }
         });
         socket.on('playerChat', function(data) {
+            if(!data.player.id in players) return;
             if(data.text.length > 24) return;
             chats.push({id:data.player.id, text:data.text, life:60*3});
         });
         socket.on('ping', function(data) {
+            if(!data.id in players) return;
             io.sockets.emit('pong', {id:data.id});
         });
         socket.on('disconnect', function(){
@@ -244,6 +278,7 @@ io.sockets.on('connection',
                     break;
                 }
             }
+            updateMap();
         } );
     }
 );

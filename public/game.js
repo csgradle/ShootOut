@@ -6,13 +6,49 @@ var fontMarker;
 let latency, timeInfo;
 let latestKilled = {name:"none", timer:0}
 let isChat;
+let fps = 0;
 
 const FRAME_DELAY = 2;
-const MAP_RADIUS = 500;
-
+let MAP_RADIUS = 500;
+const changelog = [
+    {
+        version:"1.0.0", 
+        date:"5/19/21", 
+        edits: ["First release"]
+    },
+    {
+        version:"1.1.0", 
+        date:"5/19/21", 
+        edits: ["Added chat function", "Visual improvements"]
+    },
+    {
+        version:"1.2.0", 
+        date:"5/23/21", 
+        edits: ["Published on cloud server", "Fixed connection and sockets"]
+    },
+    {
+        version:"1.3.0", 
+        date:"5/24/21", 
+        edits: ["Buffed sniper", "Buffed standard", "Added anti-chat and name hacks", "Fixed leaderboard vulnerability", "Fixed sticky input issues"]
+    },
+    {
+        version:"1.4.0", 
+        date:"6/5/21", 
+        edits: [
+            "Changed FPS calculation", 
+            "Patched and improved leaderboard code and display",
+            "Fixed server-side websocket vulnerabilities", 
+            "Added offline notification for when the server isn't working", 
+            "Changed standard gun to spray gun", 
+            "Fixed chat visibility on death",
+            "Added dynamic map based on player count"
+        ]
+    },
+];
+let changelogindex = changelog.length-1;
 const gunInfo = [
-    { name:'shotgun', shootReload:3, reloadMax:2 },
-    { name:'standard', shootReload:5, reloadMax:20 },
+    { name:'shotgun', shootReload:5, reloadMax:2 },
+    { name:'spray', shootReload:1, reloadMax:20 },
     { name:'sniper', shootReload:20, reloadMax:2 }
 ];
 const keyCodes = {
@@ -22,13 +58,12 @@ const keyCodes = {
     s:83
 }
 let nameInput, username = 'unnamed player', chatInput;
-
+let disconnectTimer = 0;
 function setup() {
     createCanvas(1000,700);
     background(colors[0]);
     loadHome();
     fontMarker = loadFont('./assets/MarkerFeltThin.ttf');
-    //socket = io.connect('http://localhost:3000');
     frameRate(30);
     ping = 0;
     isChat = false;
@@ -42,6 +77,7 @@ function setup() {
             this.value(this.value().substring(0, 24));
         }
     });
+    disconnectTimer = 0;
 }
 function loadHome() {
     GAMEMODE = 'HOME';
@@ -58,6 +94,7 @@ function loadHome() {
     nameInput.show();
     
     isChat = false;
+    disconnectTimer = 0;
 }
 let gameStates = [];
 
@@ -75,10 +112,11 @@ let highestStreak = 0;
 function loadServer() {
     GAMEMODE='LOAD';
     username = nameInput.value();
+    disconnectTimer = 0;
     nameInput.hide();
-    socket = io.connect("wss://45.79.66.150.nip.io/");
+    //socket = io.connect("wss://45.79.66.150.nip.io/");
     console.log('sending connection...');
-    //socket = io.connect("http://localhost:3000")
+    socket = io.connect("http://localhost:3000")
     socket.on('newConnected', function(data){
         if(data.id == socket.id) {
             console.log('connected, now creating player');
@@ -96,6 +134,7 @@ function loadServer() {
                 gameStates.push({players, bullets, leaderboard, walls, chats});
             }
             socket.on('heartbeat', tick);
+            disconnectTimer = 0;
             loadGame();
         }
     });
@@ -103,6 +142,7 @@ function loadServer() {
         if(data.id == socket.id) {
             const newTime = new Date();
             ping =  newTime.getMilliseconds()-timeInfo.getMilliseconds();
+            disconnectTimer = 0;
         }
     });
     socket.on('playerDied', function(data) {
@@ -110,6 +150,9 @@ function loadServer() {
             player = data.player;
             killedBy = data.killedBy.username;
             loadDead();
+            isChat = false;
+            chatInput.hide();
+            document.getElementById("chatInput").blur();
         }
         if(data.killedBy.id == socket.id) {
             latestKilled.name = data.player.username;
@@ -123,7 +166,7 @@ function loadGame() {
     scroll = {x:0, y:0};
     gunReady = true;
     shootReload = gunInfo[player.weapon].shootReload;
-    
+    disconnectTimer = 0;
 }
 function loadDead() {
     GAMEMODE='DEAD';
@@ -163,11 +206,14 @@ function tick(data) {
     player.redTime = players[player.id].redTime;
     player.kills = players[player.id].kills;
     
+    MAP_RADIUS = data.MAP_RADIUS;
+
     socket.emit('updatePlayer', { player } );
     if(frameCount%30 == 0) {
         timeInfo = new Date();
         socket.emit('ping', { id:player.id });
     }
+    disconnectTimer = 0;
     //
 }
 function getGameState() {
@@ -187,6 +233,7 @@ function addGameState(gameState) {
 }
 
 function draw() {
+    fps += (getFrameRate()-fps)*0.1;
     background(colors[0]);
     if(GAMEMODE=='HOME') {
         // name box
@@ -228,6 +275,7 @@ function draw() {
         text("Play", width/2, height/2+150);
         
         drawWeaponSelection();
+        drawChangelog();
     }
     if(GAMEMODE=='LOAD') {
         rectMode(CENTER);
@@ -237,8 +285,16 @@ function draw() {
 
         textSize(50);
         text("Loading...", width/2, height*1/2);
+        disconnectTimer++;
+        if(disconnectTimer > 3*30) {
+            GAMEMODE="OFFLINE";
+        }
     }
     if(GAMEMODE=="GAME") {
+        disconnectTimer++;
+        if(disconnectTimer > 3*30) {
+            GAMEMODE = "OFFLINE";
+        }
         scroll.x += (player.x-width/2-scroll.x)*0.1;
         scroll.y += (player.y-height/2-scroll.y)*0.1;
         background(colors[4]);
@@ -281,11 +337,17 @@ function draw() {
         //text('ammo:'+player.ammo, 80, height-50);
         //text('reload:'+player.reloadCounter, 80, height-30);
         text('ping: ' + ping + 'ms', 80, height-70);
-        text(round(getFrameRate()) + ' FPS', 80, height-110);
+        text(round(fps) + ' FPS', 80, height-110);
 
-        drawLeaderboard()
+        drawLeaderboard();
+        
+        
     }
     if(GAMEMODE=='DEAD') {
+        disconnectTimer++;
+        if(disconnectTimer > 3*30) {
+            GAMEMODE= "OFFLINE";
+        }
         // background
         background(colors[4]);
         drawBullets();
@@ -352,6 +414,17 @@ function draw() {
 
         drawLeaderboard()
         drawWeaponSelection();
+        
+    }
+    if(GAMEMODE=="OFFLINE") {
+        socket.disconnect();
+        rectMode(CENTER);
+        fill(colors[4]);
+        stroke(colors[2]); strokeWeight(10);
+        rect(width/2, height/2, 550, 250);
+        strokeWeight(2);
+        textSize(30);
+        text("Server not connecting.\nServer could be turned off at the moment,\nor you might be offline.\nFeel free to message the creator,\nchicken#3413 on discord.", width/2, height*1/2);
     }
 }
 
@@ -394,9 +467,9 @@ function drawChats() {
         } else {
             count[chat.id] = 0;
         }
-        fill(255);
+        fill(colors[1]);
         noStroke();
-        textSize(20);
+        textSize(15);
         text(chat.text, p.x - scroll.x, p.y - scroll.y - 60 - 20*count[chat.id]);
     }
 }
@@ -410,15 +483,16 @@ function drawBullets() {
 }
 function drawLeaderboard() {
     for(let i = 0; i < leaderboard.length; i++) {
-        fill(colors[3]);
+        let c = color(colors[3]); c.setAlpha(150);
+        fill(c);
         noStroke();
-        rect(width-120, 40+i*40, 180, 30);
+        rect(width-120, 40+i*30, 180, 26);
         fill(colors[0]);
-        textSize(15);
+        textSize(13);
         textAlign(LEFT, CENTER);
-        text(leaderboard[i].username, width-120-80, 40+i*40);
+        text(leaderboard[i].username, width-120-80, 40+i*30);
         textAlign(RIGHT,CENTER);
-        text(leaderboard[i].kills, width-40, 40+i*40);
+        text(leaderboard[i].kills, width-40, 40+i*30);
         textAlign(CENTER,CENTER);
     }
 }
@@ -546,7 +620,29 @@ function drawMap() {
         ellipse(walls[i].x-scroll.x, walls[i].y-scroll.y, walls[i].d, walls[i].d);
     }
 }
+function drawChangelog() {
+    textAlign(CENTER);
+    fill(colors[2]); noStroke(); textSize(30);
+    text("Changelog", 120, 50);
+    textSize(20);
+    text("Version: " + changelog[changelogindex].version + "\t" + changelog[changelogindex].date, 120, 90);
+    textSize(12);
+    textAlign(LEFT);
+    for(let i = 0; i < changelog[changelogindex].edits.length; i++) {
+        let txt = "> " + changelog[changelogindex].edits[i];
+        text(txt, 10, 120+i*20);
+    }
 
+    fill(colors[3]); noStroke();
+    ellipse(120-80,50, 20,20);
+    ellipse(120+80,50, 20,20);
+    fill(colors[0]); noStroke();
+    textSize(15);
+    textAlign(CENTER);
+    text("<", 120-80, 48);
+    text(">", 120+80, 48);
+    
+}
 function drawPlayer(user) {
     fill(colors[1]);
     noStroke();
@@ -610,7 +706,7 @@ function drawAmmo() {
         noStroke();
         textAlign(RIGHT,CENTER);
         textSize(30);
-        text('Standard', width-20, height-40);
+        text('Spray', width-20, height-40);
         textAlign(CENTER,CENTER);
         
         for(let i = 0; i < player.ammo; i++) {
@@ -736,6 +832,18 @@ function mouseReleased() {
                 }
             }
             
+        }
+    }
+    if(GAMEMODE=="HOME") {
+        if(mouseX<250 && mouseY < 80) {
+            if(dist(mouseX, mouseY, 120-80, 50) < 10) {
+                changelogindex--;
+                if(changelogindex == -1) changelogindex = changelog.length-1;
+            }
+            if(dist(mouseX, mouseY, 120+80, 50) < 10) {
+                changelogindex++;
+                if(changelogindex == changelog.length) changelogindex = 0;
+            }
         }
     }
 }
