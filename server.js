@@ -143,7 +143,7 @@ function updateGame(){
     }
     if(frameCount%3600 == 0 && leaderboard.length > 0) {
         for(let i = 0; i < leaderboard.length; i++) {
-            if(!leaderboard[i].id in players) {
+            if(!(leaderboard[i].id in players)) {
                 leaderboard.splice(i, 1);
                 i--;
             }
@@ -176,7 +176,7 @@ io.sockets.on('connection',
         io.sockets.emit('newConnected', {id: socket.id});
 
         socket.on('createPlayer', function(data) {
-            if(!data.player.id in players) return;
+            if((!data.player.id in players)) return;
             players[data.player.id]=data.player;
             players[data.player.id].weapon = data.player.weapon % 3;
             if(data.player.username.length > 14) players[data.player.id].username = "A_PROGRAMMER";
@@ -189,7 +189,7 @@ io.sockets.on('connection',
             updateMap();
         });
         socket.on('updatePlayer', function(data) {
-            if(!data.player.id in players) return;
+            if(!(data.player.id in players)) return;
             let u = data.player;
             if(players[u.id].health == -100 || u.health == -100) return;
             u.ammo = players[u.id].ammo;
@@ -201,7 +201,7 @@ io.sockets.on('connection',
                 
         });
         socket.on('playerShoot', function(data) {
-            if(!data.id in players) return;
+            if(!(data.id in players)) return;
             if(players[data.id].health == -100) return;
             if(players[data.id].ammo > 0){
                 if(players[data.id].weapon == 0) {
@@ -226,7 +226,7 @@ io.sockets.on('connection',
             }
         });
         socket.on('playerReload', function(data) {
-            if(!data.id in players) return;
+            if(!(data.id in players)) return;
             if(players[data.id].health == -100) return;
             if(players[data.id].reloadCounter = -1) {
                 if(players[data.id].weapon == 0) 
@@ -239,7 +239,7 @@ io.sockets.on('connection',
             }
         });
         socket.on('restartPlayer', function(data){
-            if(!data.player.id in players) return;
+            if(!(data.player.id in players)) return;
             if(players[data.player.id].health == -100) {
                 players[data.player.id].x = randomPos();
                 players[data.player.id].y = randomPos();
@@ -259,12 +259,12 @@ io.sockets.on('connection',
             }
         });
         socket.on('playerChat', function(data) {
-            if(!data.player.id in players) return;
+            if(!(data.player.id in players)) return;
             if(data.text.length > 24) return;
             chats.push({id:data.player.id, text:data.text, life:60*3});
         });
         socket.on('ping', function(data) {
-            if(!data.id in players) return;
+            if(!(data.id in players)) return;
             io.sockets.emit('pong', {id:data.id});
         });
         socket.on('disconnect', function(){

@@ -60,7 +60,8 @@ const keyCodes = {
 let nameInput, username = 'unnamed player', chatInput;
 let disconnectTimer = 0;
 function setup() {
-    createCanvas(1000,700);
+    let canvas = createCanvas(1000,700);
+    canvas.parent("game");
     background(colors[0]);
     loadHome();
     fontMarker = loadFont('./assets/MarkerFeltThin.ttf');
@@ -69,6 +70,7 @@ function setup() {
     isChat = false;
     chatInput = createInput('');
     chatInput.hide();
+    chatInput.parent("game");
     chatInput.position(width/2-150, height*1/2+100);
     chatInput.size(300);
     chatInput.id("chatInput")
@@ -82,6 +84,7 @@ function setup() {
 function loadHome() {
     GAMEMODE = 'HOME';
     nameInput = createInput(username);
+    nameInput.parent("game");
     console.log(username);
     nameInput.value(username);
     nameInput.position(width/2-50, height*1/2+20);
@@ -114,9 +117,9 @@ function loadServer() {
     username = nameInput.value();
     disconnectTimer = 0;
     nameInput.hide();
-    socket = io.connect("wss://45.79.66.150.nip.io/");
+    //socket = io.connect("wss://45.79.66.150.nip.io/");
     console.log('sending connection...');
-    //socket = io.connect("http://localhost:3000")
+    socket = io.connect("http://localhost:3000")
     socket.on('newConnected', function(data){
         if(data.id == socket.id) {
             console.log('connected, now creating player');
@@ -233,6 +236,8 @@ function addGameState(gameState) {
 }
 
 function draw() {
+    //if(isChat) chatInput.position(-150 + window.innerWidth/2,100+window.innerHeight*0.9/2);
+    //if(GAMEMODE == "HOME") nameInput.position(-50 + window.innerWidth/2, 20 + window.innerHeight*0.9/2);
     fps += (getFrameRate()-fps)*0.1;
     background(colors[0]);
     if(GAMEMODE=='HOME') {
@@ -460,7 +465,10 @@ function drawChats() {
     let count = {};
     for(let i = chats.length - 1; i >= 0; i--) {
         let chat = chats[i];
+        if(!(chat.id in players)) return;
+        
         let p = players[chat.id];
+        
         if(chat.id == socket.id) p = player;
         if(chat.id in count) {
             count[chat.id]++;
