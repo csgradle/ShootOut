@@ -117,7 +117,7 @@ function loadServer() {
     username = nameInput.value();
     disconnectTimer = 0;
     nameInput.hide();
-    socket = io.connect("wss://45.79.66.150.nip.io/");
+    socket = io.connect("wss://shootout.45.79.66.150.nip.io/");
     console.log('sending connection...');
     //socket = io.connect("http://localhost:3000")
     socket.on('newConnected', function(data){
