@@ -1,5 +1,5 @@
-const destination = "http://localhost:3000";
-//const destination = "wss://shootout.koizura.me";
+//const destination = "http://localhost:3000";
+const destination = "wss://shootout.koizura.me";
 
 const colors = ['#262312', '#D9C99A', '#F2E1AE', '#BFA87E', '#0D0D0D', '#B30054', '#19B52C'];
 var socket;
@@ -55,7 +55,8 @@ const changelog = [
             "Added player count display",
             "Added leaderboard display limit",
             "Added in-game escape option",
-            "Added space to shoot"
+            "Added space to shoot",
+            "decreased heal speed"
         ]
     },
 ];

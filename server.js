@@ -67,7 +67,7 @@ function updateGame(){
             if(player.redTime > 0) {
                 player.redTime-=0.5;
             } else if (player.health < 100){
-                player.health += 0.1;
+                player.health += 0.05;
                 if(player.health > 100) player.health = 100;
             }
             for(let i = 0; i < bullets.length; i++) {
