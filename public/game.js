@@ -1,3 +1,5 @@
+const destination = "http://localhost:3000";
+//const destination = "wss://shootout.koizura.me";
 
 const colors = ['#262312', '#D9C99A', '#F2E1AE', '#BFA87E', '#0D0D0D', '#B30054', '#19B52C'];
 var socket;
@@ -7,7 +9,8 @@ let latency, timeInfo;
 let latestKilled = {name:"none", timer:0}
 let isChat;
 let fps = 0;
-
+let activePlayers = 0;
+let escapeCounter = 0;
 const FRAME_DELAY = 2;
 let MAP_RADIUS = 500;
 const changelog = [
@@ -44,6 +47,17 @@ const changelog = [
             "Added dynamic map based on player count"
         ]
     },
+    {
+        version:"1.4.1", 
+        date:"6/14/21", 
+        edits: [
+            "Added better auto-map-size",
+            "Added player count display",
+            "Added leaderboard display limit",
+            "Added in-game escape option",
+            "Added space to shoot"
+        ]
+    },
 ];
 let changelogindex = changelog.length-1;
 const gunInfo = [
@@ -55,7 +69,9 @@ const keyCodes = {
     a:65,
     d:68,
     w:87,
-    s:83
+    s:83,
+    space:32,
+    escape:27,
 }
 let nameInput, username = 'unnamed player', chatInput;
 let disconnectTimer = 0;
@@ -117,9 +133,8 @@ function loadServer() {
     username = nameInput.value();
     disconnectTimer = 0;
     nameInput.hide();
-    socket = io.connect("wss://shootout.koizura.me");
     console.log('sending connection...');
-    //socket = io.connect("http://localhost:3000")
+    socket = io.connect(destination);
     socket.on('newConnected', function(data){
         if(data.id == socket.id) {
             console.log('connected, now creating player');
@@ -145,6 +160,9 @@ function loadServer() {
         if(data.id == socket.id) {
             const newTime = new Date();
             ping =  newTime.getMilliseconds()-timeInfo.getMilliseconds();
+            if(ping < 0) {
+                ping = 1000+ping;
+            }
             disconnectTimer = 0;
         }
     });
@@ -266,7 +284,12 @@ function draw() {
         // instructions
         fill(colors[2]);
         textSize(20); noStroke();
-        text("INSTRUCTIONS\nWASD - move\nclick - shoot\nR - reload", width/2, height/2+240);
+        text("WASD - move\nclick - shoot\nR - reload\nSpace - chat", width/2, height/2+240);
+
+        //bottom left
+        fill(colors[2]);
+        textSize(15);
+        text("Server located in California\nMade by Koizura", width/2, 30);
 
         // play btn
         if(    mouseX > width/2-60     && mouseX < width/2+60
@@ -343,10 +366,20 @@ function draw() {
         //text('reload:'+player.reloadCounter, 80, height-30);
         text('ping: ' + ping + 'ms', 80, height-70);
         text(round(fps) + ' FPS', 80, height-110);
+        textSize(15);
+        text(activePlayers + " Active players", 80, height-30);
 
         drawLeaderboard();
-        
-        
+        if(escapeCounter > 0) {
+            fill(255);
+            textSize(30);
+            text("Hold escape to return to home " + round(3-escapeCounter/30), width/2, height/4);
+        }
+
+        if(escapeCounter > 30*3) {
+            loadHome();
+            socket.disconnect();
+        }
     }
     if(GAMEMODE=='DEAD') {
         disconnectTimer++;
@@ -434,6 +467,7 @@ function draw() {
 }
 
 function drawPlayers() {
+    activePlayers = 0;
     for(let key in players) {
         let p = players[key];
         if(p.health < 0) {
@@ -444,6 +478,8 @@ function drawPlayers() {
             line(cntr.x+30, cntr.y-30, cntr.x-30, cntr.y+30);
             continue;
         }
+
+        activePlayers++;
 
         if(p.id == socket.id) continue;
         drawPlayer(p);
@@ -491,6 +527,7 @@ function drawBullets() {
 }
 function drawLeaderboard() {
     for(let i = 0; i < leaderboard.length; i++) {
+        if(i > 17) break;
         let c = color(colors[3]); c.setAlpha(150);
         fill(c);
         noStroke();
@@ -563,6 +600,16 @@ function updatePlayer(user) {
         if(player.ammo > 0) {
             shoot = true;
         }
+    }
+    if(keyIsDown(keyCodes.space)) {
+        if(player.ammo > 0 && player.weapon == 1) {
+            shoot = true;
+        }
+    }
+    if(keyIsDown(keyCodes.escape)) {
+        escapeCounter++;
+    } else {
+        escapeCounter = 0;
     }
     let speed = 10;
     if(keyup) {
@@ -803,6 +850,11 @@ function keyPressed() {
                 }
             }
         }
+        if(key==' ') {
+            if(player.ammo > 0) {
+                shoot = true;
+            }
+        }
     }
 }
 function keyReleased() {
@@ -812,6 +864,7 @@ function keyReleased() {
         if(key=='s') keydown = false;
         if(key=='a') keyleft = false;
         if(key=='d') keyright = false;
+        if(key==' ' && player.reloadCounter == -1 && player.ammo < 1) socket.emit('playerReload', {id:player.id});
     }
 }
 let shoot = false;

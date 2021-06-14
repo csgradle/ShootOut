@@ -151,7 +151,16 @@ function updateGame(){
     }
 }
 function updateMap() {
-    if(playerCount > 6) {
+    if(playerCount >= 25) {
+        MAP_RADIUS = 800 + floor(playerCount / 5 - 4) * 100;
+        walls = [
+            { name:'TL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/5 },
+            { name:'TR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/5 },
+            { name:'BL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/5 },
+            { name:'BR', x:-MAP_RADIUS+MAP_RADIUS*4/3, y:-MAP_RADIUS+MAP_RADIUS*4/3, d:MAP_RADIUS/5 }
+        ];
+    }
+    else if(playerCount > 8) {
         MAP_RADIUS = 800;
         walls = [
             { name:'TL', x:-MAP_RADIUS+MAP_RADIUS*2/3, y:-MAP_RADIUS+MAP_RADIUS*2/3, d:MAP_RADIUS/5 },
@@ -176,7 +185,7 @@ io.sockets.on('connection',
         io.sockets.emit('newConnected', {id: socket.id});
 
         socket.on('createPlayer', function(data) {
-            if((!data.player.id in players)) return;
+            if(data.player.id in players) return;
             players[data.player.id]=data.player;
             players[data.player.id].weapon = data.player.weapon % 3;
             if(data.player.username.length > 14) players[data.player.id].username = "A_PROGRAMMER";
